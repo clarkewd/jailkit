@@ -58,6 +58,21 @@ int file_exists(const char *path) {
 	return 1;
 }
 
+
+int is_dir(const char *path) {
+	/* where is this function used? access() is more light than stat() but it
+	does not equal a 'file exist', but 'file exists and can be accessed' */
+	struct stat sb;
+	if (stat(path, &sb) == -1 && errno == ENOENT) {
+		return 0;
+	}
+	if (S_ISDIR(sb.st_mode)) {
+		return 1;
+	}
+	return 0;
+}
+
+
 /* creates a string from an array of strings, with the delimiter inbetween
 use arrlen -1 if the array is NULL terminated.
 the strings should all be '\0' terminated*/
@@ -195,7 +210,7 @@ int getjaildir(const char *oldhomedir, char **jaildir, char **newhomedir) {
 		}
 		i--;
 	}
-	return 1;
+	return 0;
 }
 
 char *strip_string(char * string) {

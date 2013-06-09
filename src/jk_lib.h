@@ -64,6 +64,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TESTPATH_GROUP    64    // (0100 0000)
 
 int file_exists(const char *path);
+int is_dir(const char *path);
 char *implode_array(char **arr, int arrlen, const char *delimiter);
 char *ending_slash(const char *src);
 int testsafepath(const char *path, int owner, int group);

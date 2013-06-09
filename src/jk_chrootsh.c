@@ -59,6 +59,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 /* #define DEBUG */
+// #define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_MSG printf
@@ -78,37 +79,7 @@ POSSIBILITY OF SUCH DAMAGE.
 /* doesn't compile on FreeBSD without this */
 extern char **environ;
 
-/*
-typedef struct {
-	char *key;
-	char *value;
-} Tsavedenv;
 
-static Tsavedenv *savedenv_new(const char *key) {
-	Tsavedenv *savedenv;
-	char *val = getenv(key);
-	if (!val) return NULL;
-	savedenv = malloc(sizeof(Tsavedenv));
-	savedenv->key = strdup(key);
-	savedenv->value = strdup(val);
-	return savedenv;
-}
-
-static void savedenv_restore(Tsavedenv *savedenv) {
-	if (savedenv) {
-		setenv(savedenv->key, savedenv->value, 1);
-		DEBUG_MSG("restored %s=%s\n",savedenv->key, savedenv->value);
-	}
-}
-
-static void savedenv_free(Tsavedenv *savedenv) {
-	if (savedenv) {
-		free(savedenv->key);
-		free(savedenv->value);
-		free(savedenv);
-	}
-}
-*/
 
 static int in_array(char **haystack, char * needle, int needlelen) {
 	if (haystack && needle) {
@@ -158,6 +129,12 @@ static int have_capabilities(void) {
 	return 0;
 }
 
+void mydebug(char argv)
+{
+
+}
+
+
 void signal_handler(int signum) {
 	syslog(LOG_ERR, "abort, received signal %s (%d)", strsignal(signum),signum);
 	exit(666);
@@ -172,9 +149,11 @@ int main (int argc, char **argv) {
 
 	struct passwd *pw=NULL;
 	struct group *gr=NULL;
+	struct group *mygr=NULL;
 	unsigned long ngroups_max=NGROUPS_MAX;
 	unsigned long ngroups=0;
 	gid_t *gids;
+	gid_t *mygids;
 	struct passwd *intpw=NULL; /* for internal_getpwuid() */
 	char *jaildir=NULL, *newhome=NULL, *shell=NULL;
 	Tiniparser *parser=NULL;
@@ -182,7 +161,10 @@ int main (int argc, char **argv) {
 	unsigned int relax_home_group_permissions=0;
 	unsigned int relax_home_other_permissions=0;
 	unsigned int relax_home_group=0;
+	unsigned int is_su=0;
 	char *injail_shell=NULL;
+	char *su_shell=NULL;
+	char *jaildir_override=NULL;
 	unsigned int skip_injail_passwd_check=0;
 
 	DEBUG_MSG(PROGRAMNAME", started\n");
@@ -208,6 +190,13 @@ int main (int argc, char **argv) {
 		syslog(LOG_ERR, "abort, "PROGRAMNAME" is called as %s", argv[0]);
 		exit(1);
 	}
+
+
+	// if this is a su command, mark is_su
+	if ( strcmp(tmp, "su")!= 0 || strcmp(tmp, "-su")!= 0 ) {
+		is_su = 1;
+	}
+
 
 	/* now test if we are setuid root (the effective user id must be 0, and the real user id > 0 */
 	if (geteuid() != 0) {
@@ -265,13 +254,16 @@ int main (int argc, char **argv) {
 		syslog(LOG_ERR, "abort, failed to get additional group information: %s, check /etc/group", strerror(errno));
 		exit(13);
 	}
-#ifdef DEBUG
-	printf("got additional groups ");
-	for (i=0;i<ngroups;i++) {
-		printf("%d, ",gids[i]);
-	}
-	printf("\n");
-#endif
+
+// #ifdef DEBUG
+// 	DEBUG_MSG("got additional groups ");
+// 	for (i=0;i<ngroups;i++) {
+// 		DEBUG_MSG("%d, ",gids[i]);
+// 	}
+// 	DEBUG_MSG("\n");
+// #endif
+
+
 
 	/* make sure the jailkit config directory is owned root:root and not writable for others */
 	if ( (testsafepath(INIPREFIX, 0, 0) &~TESTPATH_GROUPW) != 0 ) {
@@ -280,12 +272,41 @@ int main (int argc, char **argv) {
 	}
 	parser = new_iniparser(CONFIGFILE);
 	if (parser) {
-		char *groupsec, *section=NULL, buffer[1024]; /* openbsd complains if this is <1024 */
+		char *groupsec, *groupsec2=NULL, *section=NULL, buffer[1024]; /* openbsd complains if this is <1024 */
+
+		// set up a secondary group to match
+		// first secondary group that a user has, if the primary group fails
+		DEBUG_MSG("testing additional groups: \n");
+		for (i=0;i<ngroups;i++)
+		{
+			mygr = getgrgid(gids[i]);
+			if( !groupsec2 && strcmp(pw->pw_name, mygr->gr_name) != 0 )
+			{
+				DEBUG_MSG("==== checking ===== %s (%d), \n",mygr->gr_name,gids[i]);
+				//set groupsec to be "group groupname" to match the ini file
+				groupsec = strcat(strcpy(malloc0(strlen(mygr->gr_name)+7), "group "), mygr->gr_name);
+				DEBUG_MSG("= groupsec would be: %s \n",groupsec);
+				if (iniparser_has_section(parser, groupsec))
+				{
+					groupsec2 = strdup(groupsec);
+					DEBUG_MSG("= setting groupsec2 to %s\n",groupsec2);
+				}
+			}
+		}
+
+		//reset gr and gids
+		gr = getgrgid(getgid());
+		getgroups(ngroups_max,gids);
 		groupsec = strcat(strcpy(malloc0(strlen(gr->gr_name)+7), "group "), gr->gr_name);
+
+
 		if (iniparser_has_section(parser, pw->pw_name)) {
 			section = strdup(pw->pw_name);
 		} else if (iniparser_has_section(parser, groupsec)) {
 			section = groupsec;
+		} else if ( groupsec2 && iniparser_has_section(parser, groupsec2) ) {
+			section = groupsec2;
+			DEBUG_MSG("= using secondary group section: %s \n",groupsec2);
 		} else if (iniparser_has_section(parser, "DEFAULT")) {
 			section = strdup("DEFAULT");
 		}
@@ -297,17 +318,24 @@ int main (int argc, char **argv) {
 				envs = explode_string(buffer, ',');
 			}
 			relax_home_group_permissions = iniparser_get_int_at_position(parser, section, "relax_home_group_permissions", pos);
+			relax_home_group_permissions = iniparser_get_int_at_position(parser, section, "relax_home_group_permissions", pos);
 			relax_home_other_permissions = iniparser_get_int_at_position(parser, section, "relax_home_other_permissions", pos);
 			relax_home_group = iniparser_get_int_at_position(parser, section, "relax_home_group", pos);
+			if (iniparser_get_string_at_position(parser, section, "jaildir_override", pos, buffer, 1024) > 0) {
+				jaildir_override = strdup(buffer);
+			}
+			if (iniparser_get_string_at_position(parser, section, "su_shell", pos, buffer, 1024) > 0) {
+				su_shell = strdup(buffer);
+			}
 			if (iniparser_get_string_at_position(parser, section, "injail_shell", pos, buffer, 1024) > 0) {
 				injail_shell = strdup(buffer);
 			}
 			if (injail_shell) {
 				skip_injail_passwd_check = iniparser_get_int_at_position(parser, section, "skip_injail_passwd_check", pos);
 			}
-			DEBUG_MSG("section %s: relax_home_group_permissions=%d, relax_home_other_permissions=%d, relax_home_group=%d, injail_shell=%s, skip_injail_passwd_check=%d\n",
+			DEBUG_MSG("section %s: relax_home_group_permissions=%d, relax_home_other_permissions=%d, relax_home_group=%d, injail_shell=%s, jaildir_override=%s, skip_injail_passwd_check=%d\n",
 					section, relax_home_group_permissions, relax_home_other_permissions,
-					relax_home_group, injail_shell, skip_injail_passwd_check);
+					relax_home_group, injail_shell, jaildir_override, skip_injail_passwd_check);
 			free(section);
 		} else {
 			DEBUG_MSG("no relevant section found in configfile\n");
@@ -358,15 +386,55 @@ int main (int argc, char **argv) {
 		syslog(LOG_ERR, "abort, got an empty home directory for user %s (%d)", pw->pw_name, getuid());
 		exit(16);
 	}
-	if (strstr(pw->pw_dir, "/./") == NULL) {
-		syslog(LOG_ERR, "abort, homedir '%s' for user %s (%d) does not contain the jail separator <jail>/./<home>", pw->pw_dir, pw->pw_name, getuid());
-		exit(17);
+	if ( strstr(pw->pw_dir, "/./") == NULL) {
+
+		if( jaildir_override )
+		{
+
+			if( ! is_dir(jaildir_override) )
+			{
+				syslog(LOG_ERR, "jaildir_override is set as '%s' but that directory does not exist", jaildir_override);
+				exit(__LINE__);
+			}
+
+		}
+		else
+		{
+
+
+			syslog(LOG_ERR, "abort, homedir '%s' for user %s (%d) does not contain the jail separator <jail>/./<home>", pw->pw_dir, pw->pw_name, getuid());
+			exit(__LINE__);
+
+		}
+
 	}
+	//printf("newhome is %s at address  %p\n", newhome, newhome);
 	DEBUG_MSG("get jaildir\n");
 	if (!getjaildir(pw->pw_dir, &jaildir, &newhome)) {
-		syslog(LOG_ERR, "abort, failed to read the jail and the home from %s for user %s (%d)",pw->pw_dir, pw->pw_name, getuid());
-		exit(17);
+
+		if(!jaildir_override)
+		{
+		  syslog(LOG_ERR, "abort, failed to read the jail and the home from %s for user %s (%d)",pw->pw_dir, pw->pw_name, getuid());
+		  exit(17);
+		}
 	}
+
+	//printf("newhome is %s at address  %p\n", newhome, newhome);
+	//jaildir = &jaildir2[0];
+	//newhome = &newhome2[0];
+	//printf("assigned newhome is %s at address  %p\n", newhome, newhome);
+	if(jaildir_override){
+	   jaildir = jaildir_override;
+	   if(!newhome){
+	     newhome = strdup(pw->pw_dir);
+	   }
+	}
+
+	//jaildir = strdup("/home/jail");
+
+	//printf("strdup newhome2 is %s at address  %p\n", newhome2, newhome2);
+	//printf("newhome is %s at address  %p\n", newhome, newhome);
+
 	DEBUG_MSG("dir=%s,jaildir=%s,newhome=%s\n",pw->pw_dir, jaildir, newhome);
 	DEBUG_MSG("get chdir()\n");
 	if (chdir(jaildir) != 0) {
@@ -450,6 +518,7 @@ int main (int argc, char **argv) {
 		}
 #else
 		/* we should never get here */
+		DEBUG_MSG("** now on line %d - we should never get here \n",__LINE__);
 		exit(333);
 #endif
 	} else {
@@ -465,6 +534,7 @@ int main (int argc, char **argv) {
 			exit(35);
 		}
 		free(gids);
+		free(mygids);
 	/*	if (initgroups(pw->pw_name, getgid())) {
 			syslog(LOG_ERR, "abort, failed to init groups for user %s (%d), check %s/etc/group", pw->pw_name,getuid(),jaildir);
 			exit(35);
@@ -527,13 +597,24 @@ int main (int argc, char **argv) {
 		free(oldpw_name);
 		free(oldgr_name);
 	}
-	if (injail_shell) {
+
+
+	DEBUG_MSG("su_shell is: %s \n", su_shell);
+
+	if(is_su && su_shell && file_exists(su_shell) ) {
+		shell = su_shell;
+	}else if (injail_shell) {
 		shell = injail_shell;
 	} else if (intpw) {
 		shell = intpw->pw_shell;
 	} else {
 		shell = pw->pw_shell;
 	}
+
+	DEBUG_MSG("shell is: %s \n", shell);
+	DEBUG_MSG("su_shell is: %s \n", su_shell);
+
+
 	/* test the shell in the jail, it is not allowed to be setuid() root */
 	testsafepath(shell,0,0);
 
