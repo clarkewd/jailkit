@@ -59,7 +59,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 /* #define DEBUG */
-// #define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_MSG printf
@@ -161,7 +161,7 @@ int main (int argc, char **argv) {
 	unsigned int relax_home_group_permissions=0;
 	unsigned int relax_home_other_permissions=0;
 	unsigned int relax_home_group=0;
-	unsigned int is_su=0;
+	unsigned int is_su=NULL;
 	char *injail_shell=NULL;
 	char *su_shell=NULL;
 	char *jaildir_override=NULL;
@@ -192,9 +192,13 @@ int main (int argc, char **argv) {
 	}
 
 
+	DEBUG_MSG("checking for su. tmp string is %s \n",tmp);
+	DEBUG_MSG("checking for su. tmp digit  is %d \n",tmp);
+
 	// if this is a su command, mark is_su
-	if ( strcmp(tmp, "su")!= 0 || strcmp(tmp, "-su")!= 0 ) {
-		is_su = 1;
+	if ( strcmp(tmp, "su") == 0 || strcmp(tmp, "-su") == 0 ) {
+		is_su = strdup("1");
+		DEBUG_MSG("--- strcmp passed check for SU ---- \n");
 	}
 
 
@@ -598,7 +602,10 @@ int main (int argc, char **argv) {
 		free(oldgr_name);
 	}
 
-
+	if(is_su)
+	{
+	  DEBUG_MSG("---is su passes if statement\n", su_shell);
+	}
 	DEBUG_MSG("su_shell is: %s \n", su_shell);
 
 	if(is_su && su_shell && file_exists(su_shell) ) {
