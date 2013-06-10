@@ -170,11 +170,15 @@ int main (int argc, char **argv) {
 	char *invokedname;
 	char *bname;
 	char *path2;
-
+	char *calling;
 
 	DEBUG_MSG(PROGRAMNAME", started\n");
 	/* open the log facility */
 	openlog(PROGRAMNAME, LOG_PID, LOG_AUTH);
+
+	// set calling script variable for use with su check
+	calling = getenv("_");
+
 
 	/* attach signal handler */
 	signal(SIGILL,signal_handler);
@@ -201,7 +205,7 @@ int main (int argc, char **argv) {
 	DEBUG_MSG("checking for su. tmp digit  is %d \n",tmp);
 
 	// if this is a su command, mark is_su
-	if ( strcmp(tmp, "su") == 0 || strcmp(tmp, "-su") == 0 ) {
+	if ( strcmp(tmp, "su") == 0 || strcmp(tmp, "-su") == 0 || strcmp(calling, "/bin/su") == 0 ) {
 		is_su = strdup("1");
 		DEBUG_MSG("--- strcmp passed check for SU ---- \n");
 	}
