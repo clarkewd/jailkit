@@ -690,6 +690,3 @@ int main (int argc, char **argv) {
 	free(jaildir);
 	exit(111);
 }
-r);
-	exit(111);
-}
