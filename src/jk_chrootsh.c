@@ -205,6 +205,10 @@ int main (int argc, char **argv) {
 		is_su = strdup("1");
 		DEBUG_MSG("--- strcmp passed check for SU ---- \n");
 	}
+	else
+	{
+		DEBUG_MSG("--- strcmp did NOT pass checks for SU ---- \n");
+	}
 
 
 	/* now test if we are setuid root (the effective user id must be 0, and the real user id > 0 */
