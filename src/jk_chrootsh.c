@@ -648,9 +648,9 @@ int main (int argc, char **argv) {
 	newargv = malloc0((argc+1)*sizeof(char *));
 	newargv[0] = shell;
 
-	syslog(LOG_ERR, "Building arguments array...");
-	syslog(LOG_ERR, "shell is : %s ", shell );
-	syslog(LOG_ERR, "argv[0] is : %s ", argv[0] );
+	DEBUG_MSG("Building arguments array...");
+	DEBUG_MSG("shell is : %s ", shell );
+	DEBUG_MSG("argv[0] is : %s ", argv[0] );
 
 
 	for (i=1;i<argc;i++) {
@@ -688,5 +688,8 @@ int main (int argc, char **argv) {
 	syslog(LOG_ERR, "ERROR: failed to execute shell %s for user %s (%d), check the permissions and libraries of %s/%s",shell,pw->pw_name,getuid(),jaildir,shell);
 
 	free(jaildir);
+	exit(111);
+}
+r);
 	exit(111);
 }
