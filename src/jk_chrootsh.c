@@ -643,36 +643,17 @@ int main (int argc, char **argv) {
 	/* cleanup before execution */
 	free(newhome);
 
-	/* now execute the jailed shell */
-	/*execl(pw->pw_shell, pw->pw_shell, NULL);*/
-	newargv = malloc0((argc+1)*sizeof(char *));
-	newargv[0] = shell;
 
-	DEBUG_MSG("Building arguments array...");
-	DEBUG_MSG("shell is : %s ", shell );
-	DEBUG_MSG("argv[0] is : %s ", argv[0] );
-
-
-	for (i=1;i<argc;i++) {
-		newargv[i] = argv[i];
-
-		syslog(LOG_ERR, "argument: %d is: %s ", i, argv[i] );
-
-
-	}
-	// execv(shell, newargv);
-
+	// using this to prevent a string / type / pointer error
 	path2 = strdup(shell);
 	bname = basename(path2);
 
 	if( argv[0][0] == '-' )
 	{
 		DEBUG_MSG("first char is a dash \n");
-
 		char buf[48];
 		snprintf(buf, sizeof buf, "-%s", bname);
 		invokedname = buf;
-
 	}
 	else
 	{
@@ -680,9 +661,22 @@ int main (int argc, char **argv) {
 		invokedname = bname;
 	}
 
+	/* now execute the jailed shell */
+	/*execl(pw->pw_shell, pw->pw_shell, NULL);*/
+	newargv = malloc0((argc+1)*sizeof(char *));
+	newargv[0] = invokedname;
 
-	DEBUG_MSG("invoked name: %s \n", invokedname);
-	execl(shell, invokedname, NULL);
+	DEBUG_MSG("Building arguments array...");
+	DEBUG_MSG("shell is : %s ", shell );
+	DEBUG_MSG("invokedname will be : %s ", invokedname );
+
+	// add the rest of the passed arguments in
+	for (i=1;i<argc;i++) {
+		newargv[i] = argv[i];
+		DEBUG_MSG( "argument: %d is: %s ", i, argv[i] );
+	}
+	execv(shell, newargv);
+
 
 	DEBUG_MSG(strerror(errno));
 	syslog(LOG_ERR, "ERROR: failed to execute shell %s for user %s (%d), check the permissions and libraries of %s/%s",shell,pw->pw_name,getuid(),jaildir,shell);
