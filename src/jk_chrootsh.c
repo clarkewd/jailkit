@@ -219,8 +219,6 @@ int main (int argc, char **argv) {
 		DEBUG_MSG("--- strcmp did NOT pass checks for SU - tmp was: %s ---- \n",tmp);
 	}
 
-	free(calling);
-
 	/* now test if we are setuid root (the effective user id must be 0, and the real user id > 0 */
 	if (geteuid() != 0) {
 		if (have_capabilities()) {
