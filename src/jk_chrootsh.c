@@ -207,7 +207,7 @@ int main (int argc, char **argv) {
 	}
 	else
 	{
-		DEBUG_MSG("--- strcmp did NOT pass checks for SU ---- \n");
+		DEBUG_MSG("--- strcmp did NOT pass checks for SU - tmp was: %s ---- \n",tmp);
 	}
 
 
